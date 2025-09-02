@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Memory Journey</title>
+  <!-- Tailwind (via CDN for quick prototype) -->
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <style>
+    /* tiny utility tweaks */
+    .nav-link-active { @apply bg-blue-700 text-white rounded-2xl shadow-lg; }
+    .fade-enter { opacity: 0; transform: translateY(20px); }
+    .fade-enter-active { opacity: 1; transform: translateY(0); transition: opacity .3s, transform .3s; }
+  </style>
+</head>
+<body class="bg-gradient-to-b from-blue-100 to-blue-200 min-h-screen flex flex-col">
+  <!-- Header -->
+  <header class="fixed top-0 inset-x-0 bg-blue-600 text-white text-center text-sm p-4 z-50">
+    Made by Tanuj Ranjith | AP Psych Cyber | Dr. Jones
+  </header>
+
+  <!-- App wrapper (gives padding‑top for fixed header) -->
+  <div class="pt-16 flex flex-col lg:flex-row flex-1 overflow-hidden" id="app-wrapper">
+    <!-- NAV -->
+    <nav class="bg-blue-600 lg:w-64 flex lg:flex-col flex-row justify-around lg:justify-start items-center p-4 gap-4 text-blue-100" id="main-nav">
+      <a href="#home"    class="flex flex-col gap-1 items-center nav-link" data-link="home">  <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-home"/></svg><span>Home</span></a>
+      <a href="#learn"   class="flex flex-col gap-1 items-center nav-link" data-link="learn"> <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-book"/></svg><span>Learn</span></a>
+    </nav>
+
+    <!-- MAIN -->
+    <main class="flex-1 overflow-y-auto pb-16 lg:pb-0" id="main-view">
+      <!-- HOME -->
+      <section id="home-section"   class="page p-8 max-w-prose mx-auto text-center space-y-8 hidden">
+        <div>
+          <h1 class="text-4xl font-extrabold text-blue-700 mb-4">🧠 Memory Journey</h1>
+          <p class="text-lg text-blue-900">Explore hands‑on activities <em>and</em> short explainers to master memory.</p>
+        </div>
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-4" id="stats-grid">
+          <!-- stat cards injected here -->
+        </div>
+        <button class="mt-6 bg-blue-600 hover:bg-blue-700 text-white text-lg rounded-full px-8 py-6 shadow-xl" onclick="go('#learn')">Start Learning ➡️</button>
+      </section>
+
+      <!-- LEARN OVERVIEW -->
+      <section id="learn-overview-section" class="page p-6 max-w-4xl mx-auto space-y-6 hidden"></section>
+
+      <!-- CHUNK GAME -->
+      <section id="chunk-section" class="page p-6 max-w-2xl mx-auto hidden"></section>
+
+      <!-- MEMORY PALACE -->
+      <section id="palace-section" class="page p-6 max-w-xl mx-auto hidden"></section>
+
+      <!-- FLASHCARDS -->
+      <section id="cards-section" class="page p-6 max-w-lg mx-auto hidden"></section>
+
+      <!-- ELABORATIVE LINK -->
+      <section id="link-section" class="page p-6 max-w-2xl mx-auto hidden"></section>
+
+      <!-- MEMORY DIAGRAM -->
+      <section id="diagram-section" class="page p-8 max-w-xl mx-auto hidden"></section>
+
+      <!-- INFO PAGES (dynamic) -->
+      <section id="info-section" class="page p-8 max-w-3xl mx-auto hidden"></section>
+    </main>
+  </div>
+
+  <!-- Feather icon sprites -->
+  <svg style="display:none"><symbol id="icon-home" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2V12H9v8a2 2 0 0 1-2 2H3z"/></symbol><symbol id="icon-book" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v15H6.5A2.5 2.5 0 0 0 4 19.5z"/></symbol><symbol id="icon-trash" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m5 0V4a2 2 0 0 1 2-2h0a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></symbol><symbol id="icon-info" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></symbol></svg>
+
+  <!-- MAIN JS -->
+  <script>
+    /********************
+     * UTILITIES
+     *******************/
+    const qs   = (sel, scope=document) => scope.querySelector(sel);
+    const qsa  = (sel, scope=document) => [...scope.querySelectorAll(sel)];
+    const load = (k, fb)=>{ try{ return JSON.parse(localStorage.getItem(k))||fb; }catch{ return fb; }};
+    const save = (k,v)=>{ try{ localStorage.setItem(k, JSON.stringify(v)); }catch{} };
+
+    const go = (hash)=>{ location.hash = hash; };
+
+    /********************
+     * STATE & DERIVED STATS
+     *******************/
+    const state = {
+      chunks: load('chunks', []), // array of arrays
+      rooms : load('rooms',  []),
+      deck  : load('deck',   []), // [{q,a}]
+      pairs : load('pairs',  [])  // [{term,emoji}]
+    };
+    const stats = () => ({
+      chunks: state.chunks.length,
+      rooms : state.rooms.length,
+      cards : state.deck.length,
+      links : state.pairs.length
+    });
+
+    /********************
+     * RENDERERS
+     *******************/
+
+    // stat cards on home
+    function renderStats() {
+      const grid = qs('#stats-grid');
+      grid.innerHTML = '';
+      const card = (label,val,to) => `
+        <a href="${to}" class="bg-blue-50 hover:bg-blue-100 active:bg-blue-200 rounded-2xl shadow text-blue-900 transform hover:-translate-y-0.5 transition flex flex-col items-center py-6">
+          <span class="text-3xl font-bold">${val}</span>
+          <span class="text-sm tracking-wide mt-1">${label}</span>
+        </a>`;
+      const s = stats();
+      grid.insertAdjacentHTML('beforeend', card('Chunks',s.chunks,'#learn/chunk'));
+      grid.insertAdjacentHTML('beforeend', card('Rooms',s.rooms,'#learn/palace'));
+      grid.insertAdjacentHTML('beforeend', card('Cards',s.cards,'#learn/cards'));
+      grid.insertAdjacentHTML('beforeend', card('Links',s.links,'#learn/link'));
+    }
+
+    /********************
+     * HOME
+     *******************/
+    function initHome() { renderStats(); }
+
+    /********************
+     * LEARN OVERVIEW
+     *******************/
+    function initLearnOverview() {
+      const wrap = qs('#learn-overview-section');
+      if (wrap.dataset.init) return; // once
+      wrap.dataset.init = true;
+      const subjects=[
+        {key:'diagram',title:'Memory Formation Overview',desc:'See the flow from sensation to long‑term memory, with brain regions annotated.'},
+        {key:'chunk',title:'Working / Short‑Term Memory',desc:'≈7 ± 2 items, ~20 s. Chunking expands capacity.'},
+        {key:'palace',title:'Encoding to Long‑Term Memory',desc:'Method of Loci turns spatial memory into retrieval cues.'},
+        {key:'link',title:'Encoding – Elaborative',desc:'Bizarre, dual‑coded images deepen semantic processing.'},
+        {key:'cards',title:'Long‑Term Memory Retrieval',desc:'Spaced repetition leverages the spacing effect for durable recall.'},
+      ];
+      wrap.innerHTML = `<h2 class="text-3xl font-bold text-blue-700 mb-6 text-center">Memory Systems &amp; Strategies</h2>`;
+      subjects.forEach(({key,title,desc})=>{
+        wrap.insertAdjacentHTML('beforeend',`
+          <div class="bg-blue-50 rounded-2xl p-6 shadow space-y-4">
+            <div>
+              <h3 class="text-2xl font-semibold text-blue-800">${title}</h3>
+              <p class="text-blue-800">${desc}</p>
+            </div>
+            <div class="flex gap-2">
+              ${ key!=='diagram'?`<a href="#learn/${key}/learn" class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-full text-sm shadow">Learn</a>`:'' }
+              <a href="#learn/${key}" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-full text-sm shadow">${key==='diagram'?'Open':'Practice'}</a>
+            </div>
+          </div>`);
+      });
+    }
+
+    /********************
+     * CHUNK GAME
+     *******************/
+    function initChunkGame() {
+      const wrap = qs('#chunk-section');
+      wrap.innerHTML = `
+        <h2 class="text-2xl font-bold text-blue-700 mb-4">Chunking Challenge</h2>
+        <div class="flex gap-2 mb-6">
+          <input id="chunk-input" class="flex-1 p-3 rounded border" placeholder="123456789" />
+          <button class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded" id="chunk-add">Chunk</button>
+        </div>
+        <div id="chunk-list"></div>`;
+
+      const input = qs('#chunk-input');
+      const list  = qs('#chunk-list');
+
+      const render = () => {
+        list.innerHTML='';
+        if(state.chunks.length===0){
+          list.innerHTML = `<p class="text-center text-blue-800">No chunks yet – enter 9 digits above.</p>`;
+          return;
+        }
+        list.className = 'grid sm:grid-cols-2 gap-4';
+        state.chunks.forEach((c,i)=>{
+          list.insertAdjacentHTML('beforeend',`
+            <div class="relative bg-blue-50 rounded shadow p-6 text-2xl font-mono text-center">${c.join(' ')}
+              <button class="absolute top-2 right-2 text-red-500" data-del="${i}"><svg width="18" height="18" stroke="currentColor" fill="none" stroke-width="2"><use href="#icon-trash"/></svg></button>
+            </div>`);
+        });
+      };
+
+      wrap.onclick=e=>{
+        if(e.target.closest('[data-del]')){
+          const i=+e.target.closest('[data-del]').dataset.del;
+          state.chunks.splice(i,1);
+          save('chunks',state.chunks);
+          renderStats();
+          render();
+        }
+      };
+      qs('#chunk-add').onclick=()=>{
+        const raw=input.value.replace(/\D/g,'').slice(0,9);
+        if(!raw) return;
+        const chunks = raw.match(/.{1,3}/g)||[];
+        state.chunks.push(chunks);
+        save('chunks',state.chunks);
+        input.value='';
+        renderStats();
+        render();
+      };
+      render();
+    }
+
+    /********************
+     * MEMORY PALACE
+     *******************/
+    function initPalace() {
+      const wrap = qs('#palace-section');
+      wrap.innerHTML = `
+        <h2 class="text-2xl font-bold text-blue-700 mb-4">Memory Palace 🏰</h2>
+        <div class="flex gap-2 mb-6">
+          <input id="room-input" class="flex-1 p-3 rounded border" placeholder="Kitchen table" />
+          <button class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded" id="room-add">Add</button>
+        </div>
+        <ul id="room-list" class="space-y-2"></ul>`;
+
+      const input = qs('#room-input');
+      const list  = qs('#room-list');
+      const render = ()=>{
+        list.innerHTML='';
+        if(state.rooms.length===0){
+          list.innerHTML='<p class="text-center text-blue-800">No rooms yet – add one above.</p>';
+          return;
+        }
+        state.rooms.forEach((r,i)=>{
+          list.insertAdjacentHTML('beforeend',`<li class="flex justify-between bg-blue-50 p-3 rounded">
+            <span>${i+1}. ${r}</span>
+            <button class="text-red-500" data-del="${i}"><svg width="18" height="18" stroke="currentColor" fill="none" stroke-width="2"><use href="#icon-trash"/></svg></button></li>`);
+        });
+      };
+      list.onclick=e=>{
+        if(e.target.closest('[data-del]')){
+          const i=+e.target.closest('[data-del]').dataset.del;
+          state.rooms.splice(i,1);
+          save('rooms',state.rooms);
+          renderStats();
+          render();
+        }
+      };
+      qs('#room-add').onclick=()=>{
+        const t=input.value.trim();
+        if(!t) return;
+        state.rooms.push(t);
+        save('rooms',state.rooms);
+        input.value='';
+        renderStats();
+        render();
+      };
+      render();
+    }
+
+    /********************
+     * FLASHCARDS
+     *******************/
+    function initCards() {
+      const wrap = qs('#cards-section');
+      wrap.innerHTML = `
+        <h2 class="text-2xl font-bold text-blue-700 text-center mb-6">Spaced‑Repetition Cards</h2>
+        <div class="flex flex-col items-center gap-6" id="card-area"></div>
+        <div class="w-full bg-blue-50 p-4 rounded-xl shadow mt-6">
+          <h3 class="font-semibold text-blue-700 mb-2">Add a new card</h3>
+          <input id="q-input" placeholder="Question" class="w-full p-2 mb-2 rounded border" />
+          <input id="a-input" placeholder="Answer" class="w-full p-2 mb-4 rounded border" />
+          <button id="card-add" class="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded">Add Card</button>
+        </div>`;
+
+      const area = qs('#card-area');
+      let idx=0, flip=false;
+      const render = ()=>{
+        area.innerHTML='';
+        if(state.deck.length===0){ area.innerHTML='<p class="text-blue-800">No cards yet – add one below.</p>'; return; }
+        const c = state.deck[idx];
+        area.insertAdjacentHTML('beforeend',`
+          <div class="relative">
+            <div class="w-80 h-56 flex items-center justify-center bg-blue-50 rounded shadow text-lg text-blue-900 p-6 whitespace-pre-wrap cursor-pointer select-none" id="card-flip">${flip?c.a:c.q}</div>
+            <button class="absolute top-2 right-2 text-red-500" id="card-del"><svg width="18" height="18" stroke="currentColor" fill="none" stroke-width="2"><use href="#icon-trash"/></svg></button>
+          </div>
+          <div class="flex gap-2 mt-2">
+            <button class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1 rounded" id="prev">Prev</button>
+            <button class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1 rounded" id="next">Next</button>
+          </div>`);
+      };
+      area.onclick=e=>{
+        if(e.target.id==='card-flip'){ flip=!flip; render();}
+        if(e.target.id==='card-del'){ if(state.deck.length){ state.deck.splice(idx,1); save('deck',state.deck); idx=0; flip=false; renderStats(); render();}}
+        if(e.target.id==='prev'){ idx=(idx-1+state.deck.length)%state.deck.length; flip=false; render(); }
+        if(e.target.id==='next'){ idx=(idx+1)%state.deck.length; flip=false; render(); }
+      };
+      qs('#card-add').onclick=()=>{
+        const q=qs('#q-input').value.trim();
+        const a=qs('#a-input').value.trim();
+        if(!q||!a) return;
+        state.deck.push({q,a});
+        save('deck',state.deck);
+        qs('#q-input').value=''; qs('#a-input').value='';
+        idx=0; flip=false;
+        renderStats();
+        render();
+      };
+      render();
+    }
+
+    /********************
+     * ELABORATIVE LINK
+     *******************/
+    function initLink() {
+      const wrap = qs('#link-section');
+      wrap.innerHTML = `
+        <div class="flex items-center mb-4"><h2 class="text-2xl font-bold text-blue-700">Elaborative Linking 🔗</h2><button id="link-info-btn" class="ml-2 text-blue-700"><svg width="20" height="20" stroke="currentColor" fill="none" stroke-width="2"><use href="#icon-info"/></svg></button></div>
+        <div class="flex gap-2 mb-6">
+          <input id="term-input" class="flex-1 p-3 rounded border" placeholder="Key term" />
+          <button id="term-add" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded">Link</button>
+        </div>
+        <div id="pair-list"></div>
+        <!-- modal -->
+        <div id="info-modal" class="fixed inset-0 bg-blue-900/50 backdrop-blur-sm flex items-center justify-center hidden z-50">
+          <div class="bg-white rounded-2xl shadow-2xl p-6 max-w-md mx-auto text-blue-900 space-y-4">
+            <h3 class="text-xl font-bold">Why Elaborative Encoding Works</h3>
+            <p>Creating vivid, dual‑coded (visual + verbal) associations strengthens memory traces and retrieval cues.</p>
+            <button id="modal-close" class="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white py-2 rounded">Got it!</button>
+          </div>
+        </div>`;
+
+      const emojis=['🌋','🚀','🐙','🎩','🧊','🦄','🍕'];
+      const list=qs('#pair-list');
+      const render=()=>{
+        list.innerHTML='';
+        if(state.pairs.length===0){ list.innerHTML='<p class="text-center text-blue-800">No links yet – enter a key term above.</p>'; return; }
+        list.className='grid sm:grid-cols-2 md:grid-cols-3 gap-4';
+        state.pairs.forEach((p,i)=>{
+          list.insertAdjacentHTML('beforeend',`<div class="relative bg-blue-50 rounded shadow p-6 flex flex-col items-center gap-2 text-2xl">
+            <span>${p.emoji}</span><span class="text-lg">${p.term}</span>
+            <button class="absolute top-2 right-2 text-red-500" data-del="${i}"><svg width="18" height="18" stroke="currentColor" fill="none" stroke-width="2"><use href="#icon-trash"/></svg></button></div>`);
+        });
+      };
+      list.onclick=e=>{ if(e.target.closest('[data-del]')){ const i=+e.target.closest('[data-del]').dataset.del; state.pairs.splice(i,1); save('pairs',state.pairs); renderStats(); render(); } };
+      qs('#term-add').onclick=()=>{ const term=qs('#term-input').value.trim(); if(!term) return; state.pairs.push({term,emoji:emojis[Math.floor(Math.random()*emojis.length)]}); save('pairs',state.pairs); qs('#term-input').value=''; renderStats(); render(); };
+      qs('#link-info-btn').onclick=()=> qs('#info-modal').classList.remove('hidden');
+      qs('#modal-close').onclick=()=> qs('#info-modal').classList.add('hidden');
+      render();
+    }
+
+    /********************
+     * MEMORY DIAGRAM
+     *******************/
+    function initDiagram() {
+      const wrap = qs('#diagram-section');
+      if(wrap.dataset.init) return; wrap.dataset.init=true;
+      const steps=[
+        {id:1,label:'Sensory Input',region:'Sensory Cortex',img:'https://cdn.flintrehab.com/uploads/2020/03/somatosensory-cortex-damage.png'},
+        {id:2,label:'Attention Filter',region:'Prefrontal Cortex',img:'https://cdn.flintrehab.com/uploads/2020/08/prefrontal-cortex-damage.png'},
+        {id:3,label:'Working Memory',region:'Parietal',img:'https://cdn.flintrehab.com/uploads/2020/05/parietal-lobe-damage.png'},
+        {id:4,label:'Encoding',region:'Hippocampus',img:'https://cdn.flintrehab.com/uploads/2020/04/hippocampus-damage-1.png'},
+        {id:5,label:'Long‑Term Storage',region:'Cerebral Cortex',img:'https://cdn.flintrehab.com/uploads/2021/01/cerebral-cortex-damage.png'},
+        {id:6,label:'Retrieval',region:'Frontal ↔ Hippocampus',img:'https://cdn.flintrehab.com/uploads/2021/01/cerebral-cortex-damage.png'}
+      ];
+      wrap.innerHTML=`<h2 class="text-blue-700 text-3xl font-bold mb-8 text-center">How a New Memory Forms</h2>`;
+
+      wrap.insertAdjacentHTML('beforeend', `<p class="text-blue-800 mb-8 text-center max-w-prose mx-auto">Memories begin with sensory input, which our brain initially processes in areas dedicated to sight, sound, and touch. Attention acts like a filter, selecting what moves forward into working memory. From there, information must be encoded — a process handled by the hippocampus — to create lasting changes in the brain's neural networks. Over time, these memories are stored across different regions of the cerebral cortex. Successful retrieval involves reactivating these neural pathways, with the hippocampus and frontal lobe coordinating recall.</p>`);
+
+      const container=document.createElement('div'); container.className='flex flex-col gap-6 items-center'; wrap.appendChild(container);
+      steps.forEach((s,i)=>{
+        container.insertAdjacentHTML('beforeend',`<div class="w-72 bg-blue-50 rounded-2xl shadow p-4 flex flex-col items-center text-center fade-enter">
+          <img src="${s.img}" alt="${s.region}" class="w-40 h-40 object-contain mb-4"/>
+          <h3 class="font-semibold text-blue-800 mb-1">Step ${s.id}: ${s.label}</h3>
+          <p class="text-blue-800 text-sm">Key region: ${s.region}</p></div>`);
+        if(i<steps.length-1){ container.insertAdjacentHTML('beforeend','<span class="text-3xl text-blue-500">⬇️</span>'); }
+      });
+      // simple fade‑in
+      setTimeout(()=> qsa('.fade-enter',container).forEach(el=>el.classList.add('fade-enter-active')),10);
+    }
+
+    /********************
+     * INFO PAGES (AP Psych explanations)
+     *******************/
+    function initInfo(topic) {
+      const map = {
+        chunk:{title:'Chunking (Working Memory Strategy)',body:`<p>In AP Psychology, <strong>chunking</strong> is presented as a way to work around the limited capacity of short‑term/working memory (7 ± 2 items; Miller, 1956). By regrouping discrete bits into meaningful units (e.g., 4‑1‑2‑9‑1‑1‑9 → 412‑911‑9), you still store only a few “chunks,” yet each holds richer data.</p><p>Neuroimaging shows the dorsolateral prefrontal cortex coordinating these groupings, while rehearsal loops in the phonological store keep them active for ~20 s. Effective chunking relies on prior knowledge—what AP Psych calls <em>top‑down processing</em>—to create meaningful patterns.</p>`},
+        palace:{title:'Method of Loci (Memory Palace)',body:`<p>The <strong>method of loci</strong> dates back to ancient rhetoricians but maps neatly onto modern models of long‑term memory. You encode new information by associating it with well‑known spatial landmarks. The hippocampus—critical for both spatial navigation and episodic encoding—binds the two, creating vivid cues.</p><p>AP Psych emphasizes that retrieval is cue‑dependent; walking your “palace” during recall triggers those associations, moving items from long‑term storage back into working memory.</p>`},
+        link:{title:'Elaborative Encoding & Bizarre Imagery',body:`<p><strong>Elaborative rehearsal</strong> goes beyond rote repetition by connecting new material to existing schemas. Creating bizarre or humorous imagery (e.g., an 🦄 riding a bicycle to remember “unicycle”) taps the visuo‑spatial sketchpad and semantic networks simultaneously—what Paivio called <em>dual‑coding theory</em>.</p><p>According to levels‑of‑processing research (Craik &amp; Tulving, 1975), this deep, semantic processing leads to more durable memories than shallow, surface‑level rehearsal.</p>`},
+        cards:{title:'Spacing Effect & Spaced Repetition',body:`<p>The <strong>spacing effect</strong> shows that information reviewed at increasing intervals is retained better than massed practice (Ebbinghaus’ forgetting curve). Spaced‑repetition flashcards algorithmically schedule reviews just before forgetting would occur, strengthening synaptic traces each cycle (<em>long‑term potentiation</em>).</p><p>AP Psych students can leverage this by self‑testing over days or weeks, which also harnesses the <em>testing effect</em>—retrieval itself further consolidates memory.</p>`}
+      };
+      const info = map[topic];
+      const sec  = qs('#info-section');
+      if(!info){ sec.innerHTML='<p>Topic not found.</p>'; return; }
+      sec.innerHTML=`<h2 class="text-blue-700 text-3xl font-bold mb-4">${info.title}</h2>${info.body}<a href="#learn/${topic}" class="inline-block mt-6 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-full shadow">Go to Practice ➡️</a>`;
+    }
+
+    /********************
+     * ROUTER (hash‑based)
+     *******************/
+    const pages = {
+      'home':   '#home-section',
+      'learn':  '#learn-overview-section',
+      'learn/chunk':'#chunk-section',
+      'learn/palace':'#palace-section',
+      'learn/cards':'#cards-section',
+      'learn/link':'#link-section',
+      'learn/diagram':'#diagram-section'
+    };
+    function router() {
+      const hash = location.hash.replace(/^#\/??/, '').replace(/^#/, '') || 'home'; // strip leading # & /
+      // determine page & possible params
+      // e.g., learn/chunk/learn sets info page
+      let pageKey = hash;
+      const parts = hash.split('/');
+      // info pages pattern learn/:topic/learn
+      if(parts[0]==='learn' && parts[2]==='learn'){ pageKey='info';}
+
+      // hide all
+      qsa('.page').forEach(s=>s.classList.add('hidden'));
+
+      // nav active
+      qsa('.nav-link',qs('#main-nav')).forEach(a=>a.classList.remove('nav-link-active'));
+      const navSel = parts[0]==='home'?'home':'learn';
+      qs(`[data-link="${navSel}"]`).classList.add('nav-link-active');
+
+      switch(pageKey){
+        case 'home':
+          qs(pages.home).classList.remove('hidden');
+          initHome();
+          break;
+        case 'learn':
+          qs(pages.learn).classList.remove('hidden');
+          initLearnOverview();
+          break;
+        case 'learn/chunk':
+          qs(pages['learn/chunk']).classList.remove('hidden');
+          initChunkGame();
+          break;
+        case 'learn/palace':
+          qs(pages['learn/palace']).classList.remove('hidden');
+          initPalace();
+          break;
+        case 'learn/cards':
+          qs(pages['learn/cards']).classList.remove('hidden');
+          initCards();
+          break;
+        case 'learn/link':
+          qs(pages['learn/link']).classList.remove('hidden');
+          initLink();
+          break;
+        case 'learn/diagram':
+          qs(pages['learn/diagram']).classList.remove('hidden');
+          initDiagram();
+          break;
+        case 'info':
+          qs('#info-section').classList.remove('hidden');
+          initInfo(parts[1]);
+          break;
+        default:
+          location.hash = '#home';
+      }
+    }
+    window.addEventListener('hashchange', router);
+    router(); // initial
+  </script>
+</body>
+</html>
